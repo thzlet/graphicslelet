@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quadtree</title>
+<style>
+  :root { --bg:#f3efe6; --ink:#2b2a33; --mut:#6d6a75; }
+  * { box-sizing: border-box; }
+  body { margin:0; min-height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center;
+         gap:14px; padding:16px; background:var(--bg); color:var(--ink); font-family:Georgia,'Times New Roman',serif; }
+  h1 { margin:0; font-size:1.5rem; font-weight:700; }
+  p { margin:0; color:var(--mut); font-size:.95rem; text-align:center; }
+  canvas { width:min(88vmin,560px); aspect-ratio:1; border:2px solid var(--ink); cursor:pointer; touch-action:manipulation; }
+  .bar { display:flex; gap:14px; align-items:center; font-family:system-ui,sans-serif; font-size:.9rem; }
+  button { font:inherit; padding:8px 16px; border:2px solid var(--ink); background:transparent; color:var(--ink); cursor:pointer; }
+  button:hover, button:focus-visible { background:var(--ink); color:var(--bg); outline:none; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#1c1b22; --ink:#ece8f2; --mut:#a5a1b0; }
+  }
+</style>
+</head>
+<body>
+  <h1>Quadtree</h1>
+  <p>Clique num quadrante pra subdividir.</p>
+  <canvas id="c" width="560" height="560" aria-label="Quadtree interativa"></canvas>
+  <div class="bar">
+    <span id="info"></span>
+    <button id="reset">De novo</button>
+  </div>
+
+<script>
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+const SIZE = cv.width, MAX_DEPTH = 7;
+const rand = (a, b) => a + Math.random() * (b - a);
+
+class Node {
+  constructor(x, y, s, depth, hue) {
+    this.x = x; this.y = y; this.s = s; this.depth = depth; this.hue = hue;
+    this.kids = null;
+    this.shape = Math.random() < 0.4 ? Math.floor(Math.random() * 3) : -1; // 0 círculo, 1 losango, 2 triângulo
+  }
+  split() {
+    if (this.kids || this.depth >= MAX_DEPTH) return;
+    const h = this.s / 2;
+    this.kids = [[0,0],[1,0],[0,1],[1,1]].map(([i, j]) =>
+      new Node(this.x + i*h, this.y + j*h, h, this.depth + 1, (this.hue + rand(-45, 45) + 360) % 360));
+  }
+}
+
+let root, hover = null;
+function reset() { root = new Node(0, 0, SIZE, 0, rand(0, 360)); draw(); }
+
+function find(n, px, py, parent = null) {
+  if (!n.kids) return { node: n, parent };
+  const half = n.s / 2;
+  const i = px >= n.x + half ? 1 : 0, j = py >= n.y + half ? 1 : 0;
+  return find(n.kids[j * 2 + i], px, py, n);
+}
+
+function drawLeaf(n) {
+  const pad = 1, s = n.s;
+  ctx.fillStyle = `hsl(${n.hue} 60% ${38 + n.depth * 6}%)`;
+  ctx.fillRect(n.x, n.y, s, s);
+  if (n.shape >= 0 && s >= 20) {
+    const cx = n.x + s/2, cy = n.y + s/2, r = s * 0.28;
+    ctx.fillStyle = `hsl(${(n.hue + 160) % 360} 70% 85%)`;
+    ctx.beginPath();
+    if (n.shape === 0) ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    else if (n.shape === 1) { ctx.moveTo(cx, cy-r); ctx.lineTo(cx+r, cy); ctx.lineTo(cx, cy+r); ctx.lineTo(cx-r, cy); }
+    else { ctx.moveTo(cx, cy-r); ctx.lineTo(cx+r, cy+r); ctx.lineTo(cx-r, cy+r); }
+    ctx.closePath(); ctx.fill();
+  }
+  ctx.strokeStyle = '#111'; ctx.lineWidth = 1.5;
+  ctx.strokeRect(n.x + pad/2, n.y + pad/2, s - pad, s - pad);
+}
+
+function count(n) {
+  if (!n.kids) return [1, n.depth];
+  return n.kids.map(count).reduce((a, b) => [a[0] + b[0], Math.max(a[1], b[1])]);
+}
+
+function draw() {
+  ctx.clearRect(0, 0, SIZE, SIZE);
+  (function walk(n) { n.kids ? n.kids.forEach(walk) : drawLeaf(n); })(root);
+  if (hover) {
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 4;
+    ctx.strokeRect(hover.x + 2, hover.y + 2, hover.s - 4, hover.s - 4);
+  }
+  const [leaves, depth] = count(root);
+  document.getElementById('info').textContent = `${leaves} quadrantes, profundidade ${depth}`;
+}
+
+function pos(e) {
+  const r = cv.getBoundingClientRect();
+  return [(e.clientX - r.left) * SIZE / r.width, (e.clientY - r.top) * SIZE / r.height];
+}
+
+cv.addEventListener('click', e => { find(root, ...pos(e)).node.split(); draw(); });
+cv.addEventListener('contextmenu', e => {
+  e.preventDefault();
+  const { parent } = find(root, ...pos(e));
+  if (parent) { parent.kids = null; hover = null; draw(); }
+});
+cv.addEventListener('mousemove', e => { hover = find(root, ...pos(e)).node; draw(); });
+cv.addEventListener('mouseleave', () => { hover = null; draw(); });
+document.getElementById('reset').addEventListener('click', reset);
+reset();
+</script>
+</body>
+</html>
